@@ -23,3 +23,30 @@ def test_password(monkeypatch):
     with TestClient(app) as c:
         assert c.get("/api/stats").status_code == 401
         assert c.get("/api/stats", auth=("admin", "secret")).status_code == 200
+
+
+def test_analyze_queues_request_when_no_scheduler(monkeypatch):
+    from sqlalchemy import select
+
+    from app.db import AnalysisRequest
+    from app.worker import check_requests
+
+    monkeypatch.setenv("VERCEL", "1")
+    ran = []
+    monkeypatch.setattr("app.worker.cycle", lambda force_deep=False: ran.append(force_deep))
+    with TestClient(app) as c:
+        assert c.post("/api/analyze").json() == {"started": True, "queued": True}
+        assert c.post("/api/analyze").json()["started"] is False  # bittadan ortiq navbat yo'q
+    check_requests()
+    assert ran == [True]
+    with SessionLocal() as s:
+        assert s.scalar(select(AnalysisRequest)).done_at is not None
+
+
+def test_neon_url_is_normalized(monkeypatch):
+    from app.config import _db_url
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@ep-x.neon.tech/db?sslmode=require")
+    assert _db_url() == "postgresql+psycopg://u:p@ep-x.neon.tech/db?sslmode=require"
+    monkeypatch.setenv("DATABASE_URL", "postgres://u:p@h/db")
+    assert _db_url().startswith("postgresql+psycopg://")

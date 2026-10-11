@@ -96,9 +96,20 @@ class PaperTrade(Base):
     status: Mapped[str] = mapped_column(String(10), default="OPEN")  # OPEN | TP | SL
 
 
+class AnalysisRequest(Base):
+    """Web paneldagi "Hozir tahlil qilish" so'rovi. Alohida ishlovchi (worker) uni bajaradi."""
+
+    __tablename__ = "analysis_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 def make_engine(url: str | None = None):
     url = url or settings.database_url
-    return create_engine(url, future=True)
+    # Neon kabi serverless baza ulanishni yopib qo'yishi mumkin: pre_ping qayta ulaydi
+    return create_engine(url, future=True, pool_pre_ping=True)
 
 
 engine = make_engine()

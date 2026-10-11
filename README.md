@@ -33,6 +33,29 @@ Panel: http://localhost:8000. Rejalashtiruvchi web bilan birga ishlaydi (`MONITO
 
 Bitta siklni qo'lda ishga tushirish: `python -m app.engine --deep`
 
+## Vercel + Neon bilan joylash
+
+Tizim uch qismdan iborat:
+
+| Qism | Qayerda | Vazifasi |
+| --- | --- | --- |
+| Web panel | Vercel | Grafik, signallar, demo savdolar; istalgan joydan ochiladi |
+| Baza | Neon (PostgreSQL) | Barcha ma'lumot; panel ham, worker ham shunga ulanadi |
+| Worker | MT5 o'rnatilgan Windows kompyuter yoki VPS | Har 5 daqiqada narx yig'adi, Claude bilan tahlil qiladi, demo savdo yuritadi |
+
+Vercel faqat so'rov kelganda qisqa ishlaydi va Linux'da, shuning uchun doimiy tahlil va MT5 worker'da bo'ladi.
+
+1. **Neon:** Vercel loyihasida Storage > Neon ni qo'shing. U `DATABASE_URL` ni avtomatik qo'yadi.
+2. **Vercel:** GitHub repo'ni import qiling. Environment Variables: `WEB_USER`, `WEB_PASSWORD`. Boshqa sozlama shart emas (`vercel.json` tayyor).
+3. **Worker (Windows):** `.env` ga o'sha Neon `DATABASE_URL`, `ANTHROPIC_API_KEY` va MT5 ma'lumotlarini yozing, keyin:
+
+```bash
+python -m app.data.collector     # birinchi marta: tarixni yuklash
+python -m app.worker             # doimiy ishlaydi
+```
+
+Paneldagi "Hozir tahlil qilish" tugmasi bazaga so'rov yozadi, worker uni 30 soniya ichida bajaradi.
+
 ## 10+ yillik tarix
 
 MT5 broker serveridagi tarix odatda bir necha yil bilan cheklangan. Uzoqroq tarix uchun Dukascopy'dan XAUUSD M1 ma'lumotini CSV qilib yuklab, import qiling:
@@ -61,6 +84,7 @@ M1 dan barcha katta vaqt oraliqlari (M5 ... Y1) avtomatik hisoblanadi.
 ## Testlar
 
 ```bash
+pip install -r requirements-dev.txt
 pytest -q
 ```
 

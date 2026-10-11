@@ -20,7 +20,7 @@ from app.analysis.claude_analyst import spent_today
 from app.analysis.strategies import STRATEGIES
 from app.config import settings
 from app.data.store import load_candles
-from app.db import PaperTrade, SessionLocal, Signal, init_db
+from app.db import AnalysisRequest, PaperTrade, SessionLocal, Signal, init_db
 from app.engine import run_cycle
 from app.timeframes import BY_CODE
 from app.trading import paper
@@ -54,11 +54,16 @@ def _safe_cycle(force_deep: bool = False) -> None:
         _cycle_lock.release()
 
 
+def scheduler_enabled() -> bool:
+    """Vercel'da fon jarayoni yo'q: u yerda tahlilni alohida worker bajaradi."""
+    return os.getenv("RUN_SCHEDULER", "true").lower() == "true" and not os.getenv("VERCEL")
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
     scheduler = None
-    if os.getenv("RUN_SCHEDULER", "true").lower() == "true":
+    if scheduler_enabled():
         scheduler = BackgroundScheduler(timezone="UTC")
         scheduler.add_job(_safe_cycle, "interval", minutes=settings.monitor_every_min, max_instances=1)
         scheduler.start()
@@ -143,6 +148,14 @@ def stats():
 
 @app.post("/api/analyze")
 def analyze_now():
+    if not scheduler_enabled():
+        with SessionLocal() as s:
+            pending = s.scalar(select(AnalysisRequest).where(AnalysisRequest.done_at.is_(None)).limit(1))
+            if pending:
+                return {"started": False, "message": "So'rov navbatda"}
+            s.add(AnalysisRequest())
+            s.commit()
+        return {"started": True, "queued": True}
     if _cycle_lock.locked():
         return {"started": False, "message": "Tahlil allaqachon ketmoqda"}
     threading.Thread(target=_safe_cycle, kwargs={"force_deep": True}, daemon=True).start()

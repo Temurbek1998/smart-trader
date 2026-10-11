@@ -6,6 +6,15 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _db_url() -> str:
+    """Neon/Vercel beradigan postgres:// manzilni SQLAlchemy + psycopg formatiga o'tkazadi."""
+    url = os.getenv("DATABASE_URL") or os.getenv("POSTGRES_URL") or "sqlite:///smart_trader.db"
+    for prefix in ("postgres://", "postgresql://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg://" + url[len(prefix):]
+    return url
+
+
 def _f(name: str, default: str) -> float:
     return float(os.getenv(name) or default)
 
@@ -13,7 +22,7 @@ def _f(name: str, default: str) -> float:
 @dataclass(frozen=True)
 class Settings:
     anthropic_api_key: str = os.getenv("ANTHROPIC_API_KEY", "")
-    database_url: str = os.getenv("DATABASE_URL") or "sqlite:///smart_trader.db"
+    database_url: str = _db_url()
     data_provider: str = os.getenv("DATA_PROVIDER", "yahoo").lower()
     symbol: str = os.getenv("SYMBOL", "XAUUSD")
 
