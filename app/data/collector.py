@@ -13,10 +13,18 @@ from app.timeframes import FETCHED
 log = logging.getLogger(__name__)
 
 
-def collect(full_history: bool = False, timeframes: list[str] | None = None) -> dict[str, int]:
-    """full_history=True bo'lsa, har vaqt oralig'i uchun uzun tarix yuklanadi."""
-    provider = get_provider()
+def collect(
+    full_history: bool = False, timeframes: list[str] | None = None, errors: dict[str, str] | None = None
+) -> dict[str, int]:
+    """full_history=True bo'lsa, har vaqt oralig'i uchun uzun tarix yuklanadi.
+    errors berilsa, yuklanmagan vaqt oraliqlari sababi shunga yoziladi."""
+    errors = {} if errors is None else errors
     counts: dict[str, int] = {}
+    try:
+        provider = get_provider()
+    except Exception as exc:
+        errors["provider"] = str(exc)
+        return counts
     with SessionLocal() as session:
         for tf in FETCHED:
             if timeframes and tf.code not in timeframes:
@@ -40,6 +48,7 @@ def collect(full_history: bool = False, timeframes: list[str] | None = None) -> 
                 counts[tf.code] = upsert_candles(session, settings.symbol, tf.code, df)
             except Exception as exc:  # bitta vaqt oralig'i xatosi qolganini to'xtatmasin
                 log.warning("%s yuklanmadi: %s", tf.code, exc)
+                errors[tf.code] = str(exc)
                 counts[tf.code] = 0
         counts["Y1"] = rebuild_yearly(session, settings.symbol)
     return counts

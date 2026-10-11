@@ -34,7 +34,10 @@ def _last_deep(session) -> Analysis | None:
 
 def run_cycle(force_deep: bool = False) -> dict:
     report: dict = {"time": datetime.now(timezone.utc).isoformat()}
-    report["collected"] = collect()
+    errors: dict[str, str] = {}
+    report["collected"] = collect(errors=errors)
+    if errors:
+        report["collect_errors"] = errors
     symbol = settings.symbol
 
     with SessionLocal() as session:
@@ -49,6 +52,11 @@ def run_cycle(force_deep: bool = False) -> dict:
         spent = analyst.spent_today(session)
         if spent >= settings.daily_cost_limit_usd:
             report["skipped"] = f"kunlik limit: ${spent:.2f}"
+            return report
+
+        # Narx ma'lumoti bo'lmasa, Claude'ga pul sarflamaymiz: bo'sh ma'lumotdan signal chiqmaydi
+        if load_candles(session, symbol, "H1", limit=50).empty:
+            report["skipped"] = "bazada narx yo'q (collect_errors ga qarang)"
             return report
 
         snapshot = build_snapshot(session, symbol)
