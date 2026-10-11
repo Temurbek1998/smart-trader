@@ -8,7 +8,10 @@ load_dotenv()
 
 def _db_url() -> str:
     """Neon/Vercel beradigan postgres:// manzilni SQLAlchemy + psycopg formatiga o'tkazadi."""
-    url = os.getenv("DATABASE_URL") or os.getenv("POSTGRES_URL") or "sqlite:///smart_trader.db"
+    url = os.getenv("DATABASE_URL") or os.getenv("POSTGRES_URL")
+    if not url:
+        # Vercel'da fayl tizimi faqat /tmp da yoziladi; baza ulanmaguncha sayt shu bilan ochiladi
+        url = "sqlite:////tmp/smart_trader.db" if os.getenv("VERCEL") else "sqlite:///smart_trader.db"
     for prefix in ("postgres://", "postgresql://"):
         if url.startswith(prefix):
             return "postgresql+psycopg://" + url[len(prefix):]
