@@ -35,26 +35,26 @@ Bitta siklni qo'lda ishga tushirish: `python -m app.engine --deep`
 
 ## Vercel + Neon bilan joylash
 
-Tizim uch qismdan iborat:
+Ikki usul bor; ikkalasida ham baza Neon (PostgreSQL) va web panel Vercel'da.
 
-| Qism | Qayerda | Vazifasi |
+| | A. To'liq Vercel (Cron) | B. Vercel + MT5 worker |
 | --- | --- | --- |
-| Web panel | Vercel | Grafik, signallar, demo savdolar; istalgan joydan ochiladi |
-| Baza | Neon (PostgreSQL) | Barcha ma'lumot; panel ham, worker ham shunga ulanadi |
-| Worker | MT5 o'rnatilgan Windows kompyuter yoki VPS | Har 5 daqiqada narx yig'adi, Claude bilan tahlil qiladi, demo savdo yuritadi |
+| Tahlil qayerda | Vercel Cron har 5 daqiqada `/api/cron` ni chaqiradi | Windows'dagi `python -m app.worker` |
+| Narx manbasi | Twelve Data API (`DATA_PROVIDER=twelvedata`) | MetaTrader 5 (`DATA_PROVIDER=mt5`) |
+| Windows server | Kerak emas | Kerak |
+| MT5 hisobda savdo | Yo'q, demo savdo faqat panelda | Bor (`EXECUTE_ON_MT5=true`) |
 
-Vercel faqat so'rov kelganda qisqa ishlaydi va Linux'da, shuning uchun doimiy tahlil va MT5 worker'da bo'ladi.
+Ikkalasi uchun:
 
 1. **Neon:** Vercel loyihasida Storage > Neon ni qo'shing. U `DATABASE_URL` ni avtomatik qo'yadi.
-2. **Vercel:** GitHub repo'ni import qiling. Environment Variables: `WEB_USER`, `WEB_PASSWORD`. Boshqa sozlama shart emas (`vercel.json` tayyor).
-3. **Worker (Windows):** `.env` ga o'sha Neon `DATABASE_URL`, `ANTHROPIC_API_KEY` va MT5 ma'lumotlarini yozing, keyin:
+2. **Vercel:** GitHub repo'ni import qiling. Environment Variables: `WEB_USER`, `WEB_PASSWORD`.
+3. **Tarixni bir marta yuklash:** o'z kompyuteringizda `.env` ga Neon `DATABASE_URL` ni yozib, `python -m app.data.collector` ni ishga tushiring (yoki `import_csv` bilan Dukascopy tarixini).
 
-```bash
-python -m app.data.collector     # birinchi marta: tarixni yuklash
-python -m app.worker             # doimiy ishlaydi
-```
+**A usul** uchun Vercel'ga qo'shimcha: `DATA_PROVIDER=twelvedata`, `TWELVEDATA_API_KEY`, `ANTHROPIC_API_KEY`, `CRON_SECRET`. Cron jadvali `vercel.json` da tayyor. Har 5 daqiqalik Cron uchun Vercel'ning pullik (Pro) tarifi kerak bo'lishi mumkin: bepul tarifda Cron chastotasi cheklangan. Twelve Data bepul tarifi (kuniga 800 so'rov) yetadi: tizim faqat yangi sham yopilganda so'rov yuboradi, kuniga taxminan 700 ta.
 
-Paneldagi "Hozir tahlil qilish" tugmasi bazaga so'rov yozadi, worker uni 30 soniya ichida bajaradi.
+**B usul** uchun Windows'da `.env` ga Neon `DATABASE_URL`, `ANTHROPIC_API_KEY` va MT5 ma'lumotlarini yozib, `python -m app.worker` ni doimiy ishga tushiring. Vercel'da `crons` bo'limini `vercel.json` dan olib tashlang.
+
+Paneldagi "Hozir tahlil qilish" tugmasi bazaga so'rov yozadi; A usulda keyingi Cron, B usulda worker 30 soniya ichida uni bajaradi.
 
 ## 10+ yillik tarix
 

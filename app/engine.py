@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
@@ -60,16 +61,27 @@ def run_cycle(force_deep: bool = False) -> dict:
                 return report
 
         report["signals"] = []
-        for strategy in STRATEGIES:
-            try:
-                result, row = analyst.analyze(session, snapshot, strategy)
-            except Exception as exc:
-                log.exception("%s tahlili xato", strategy.key)
+
+        def run(strategy):
+            # Har strategiya o'z sessiyasida, parallel: Vercel vaqt chegarasiga sig'ish uchun
+            with SessionLocal() as own:
+                try:
+                    result, row = analyst.analyze(own, snapshot, strategy)
+                    return strategy, result, row.id, None
+                except Exception as exc:
+                    log.exception("%s tahlili xato", strategy.key)
+                    return strategy, None, None, exc
+
+        with ThreadPoolExecutor(max_workers=len(STRATEGIES)) as pool:
+            outcomes = list(pool.map(run, STRATEGIES))
+
+        for strategy, result, analysis_id, exc in outcomes:
+            if exc is not None:
                 report["signals"].append({"strategy": strategy.key, "error": str(exc)})
                 continue
             published, agree, problems = check(result)
             sig = Signal(
-                analysis_id=row.id, strategy=strategy.key, symbol=symbol, side=result["side"],
+                analysis_id=analysis_id, strategy=strategy.key, symbol=symbol, side=result["side"],
                 entry=result["entry"] or None, stop_loss=result["stop_loss"] or None,
                 take_profit=result["take_profit"] or None, confidence=result["confidence"],
                 timeframes_agree=agree, published=published, reason=result["reason"],

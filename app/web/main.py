@@ -20,7 +20,7 @@ from app.analysis.claude_analyst import spent_today
 from app.analysis.strategies import STRATEGIES
 from app.config import settings
 from app.data.store import load_candles
-from app.db import AnalysisRequest, PaperTrade, SessionLocal, Signal, init_db
+from app.db import AnalysisRequest, PaperTrade, SessionLocal, Signal, init_db, utcnow
 from app.engine import run_cycle
 from app.timeframes import BY_CODE
 from app.trading import paper
@@ -31,7 +31,9 @@ security = HTTPBasic(auto_error=False)
 _cycle_lock = threading.Lock()
 
 
-def auth(creds: HTTPBasicCredentials | None = Depends(security)) -> None:
+def auth(request: Request, creds: HTTPBasicCredentials | None = Depends(security)) -> None:
+    if request.url.path == "/api/cron":  # o'z tekshiruvi bor (CRON_SECRET)
+        return
     password = os.getenv("WEB_PASSWORD", "")
     if not password:
         return
@@ -144,6 +146,21 @@ def stats():
             "daily_cost_limit": settings.daily_cost_limit_usd,
             "strategies": per_strategy,
         }
+
+
+@app.get("/api/cron")
+def cron(request: Request):
+    """Vercel Cron har 5 daqiqada chaqiradi. Vercel `Authorization: Bearer <CRON_SECRET>` yuboradi."""
+    secret = os.getenv("CRON_SECRET", "")
+    given = request.headers.get("authorization", "")
+    if not secret or not secrets.compare_digest(given, f"Bearer {secret}"):
+        raise HTTPException(401)
+    with SessionLocal() as s:
+        pending = s.scalars(select(AnalysisRequest).where(AnalysisRequest.done_at.is_(None))).all()
+        for r in pending:
+            r.done_at = utcnow()
+        s.commit()
+    return run_cycle(force_deep=bool(pending))
 
 
 @app.post("/api/analyze")

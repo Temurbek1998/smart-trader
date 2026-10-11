@@ -70,6 +70,19 @@ def load_candles(
     return df.sort_index()
 
 
+def last_ts(session: Session, symbol: str, timeframe: str) -> datetime | None:
+    from sqlalchemy import func
+
+    ts = session.scalar(
+        select(func.max(Candle.ts)).where(Candle.symbol == symbol, Candle.timeframe == timeframe)
+    )
+    if ts is not None and ts.tzinfo is None:
+        from datetime import timezone
+
+        ts = ts.replace(tzinfo=timezone.utc)
+    return ts
+
+
 def rebuild_yearly(session: Session, symbol: str) -> int:
     """1 yillik shamlarni oylik (MN1) shamlardan hisoblaydi."""
     monthly = load_candles(session, symbol, "MN1")

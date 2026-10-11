@@ -2,6 +2,7 @@
 
 MT5Provider asosiy manba: MetaTrader 5 terminalidan to'g'ridan-to'g'ri o'qiydi
 (faqat Windows'da, terminal o'rnatilgan va brokerga kirilgan bo'lishi kerak).
+TwelveDataProvider serverless (Vercel) uchun: REST API, Windows shart emas.
 YahooProvider sinov uchun: kalitsiz, oltin fyuchersi (GC=F) narxi, intraday tarixi qisqa.
 """
 
@@ -137,6 +138,49 @@ class YahooProvider:
         return float(self.candles(symbol, "M1", 1)["close"].iloc[-1])
 
 
+class TwelveDataProvider:
+    """Serverless (Vercel) uchun narx manbasi: Twelve Data REST API, XAU/USD.
+    Bepul tarif: kuniga 800, daqiqasiga 8 so'rov."""
+
+    name = "twelvedata"
+    URL = "https://api.twelvedata.com/time_series"
+    SYMBOLS = {"XAUUSD": "XAU/USD"}
+    INTERVALS = {
+        "M1": "1min", "M5": "5min", "M15": "15min", "H1": "1h",
+        "H4": "4h", "D1": "1day", "W1": "1week", "MN1": "1month",
+    }
+
+    def __init__(self) -> None:
+        import os
+
+        self.api_key = os.getenv("TWELVEDATA_API_KEY", "")
+        if not self.api_key:
+            raise RuntimeError("TWELVEDATA_API_KEY berilmagan")
+
+    def candles(self, symbol: str, timeframe: str, count: int) -> pd.DataFrame:
+        import httpx
+
+        params = {
+            "symbol": self.SYMBOLS.get(symbol, symbol),
+            "interval": self.INTERVALS[timeframe],
+            "outputsize": min(max(count, 1), 5000),
+            "timezone": "UTC",
+            "order": "asc",
+            "apikey": self.api_key,
+        }
+        data = httpx.get(self.URL, params=params, timeout=30).json()
+        if data.get("status") != "ok":
+            raise RuntimeError(f"Twelve Data {symbol} {timeframe}: {data.get('message')}")
+        df = pd.DataFrame(data["values"])
+        df["ts"] = pd.to_datetime(df["datetime"], utc=True)
+        for c in COLUMNS:
+            df[c] = pd.to_numeric(df[c], errors="coerce") if c in df else 0.0
+        return df.set_index("ts")[COLUMNS].fillna({"volume": 0.0})
+
+    def last_price(self, symbol: str) -> float:
+        return float(self.candles(symbol, "M1", 1)["close"].iloc[-1])
+
+
 def resample(df: pd.DataFrame, rule: str) -> pd.DataFrame:
     out = df.resample(rule, label="left", closed="left").agg(
         {"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"}
@@ -150,7 +194,10 @@ _provider: PriceProvider | None = None
 def get_provider() -> PriceProvider:
     global _provider
     if _provider is None:
-        _provider = MT5Provider() if settings.data_provider == "mt5" else YahooProvider()
+        _provider = {
+            "mt5": MT5Provider,
+            "twelvedata": TwelveDataProvider,
+        }.get(settings.data_provider, YahooProvider)()
     return _provider
 
 

@@ -5,9 +5,9 @@ from __future__ import annotations
 import logging
 
 from app.config import settings
-from app.data.providers import get_provider
-from app.data.store import rebuild_yearly, upsert_candles
+from app.data.store import last_ts, rebuild_yearly, upsert_candles
 from app.db import SessionLocal
+from app.data.providers import get_provider, now_utc
 from app.timeframes import FETCHED
 
 log = logging.getLogger(__name__)
@@ -21,7 +21,20 @@ def collect(full_history: bool = False, timeframes: list[str] | None = None) -> 
         for tf in FETCHED:
             if timeframes and tf.code not in timeframes:
                 continue
-            count = tf.history_bars if full_history else max(tf.snapshot_bars, 10)
+            if full_history:
+                count = tf.history_bars
+            else:
+                last = last_ts(session, settings.symbol, tf.code)
+                if last is None:
+                    count = max(tf.snapshot_bars + 200, 300)
+                else:
+                    age_min = (now_utc() - last).total_seconds() / 60
+                    # Yangi sham hali yopilmagan bo'lsa so'rov yubormaymiz (API limitini tejash).
+                    # M1 har siklda yangilanadi: demo savdolar stop/take-profit tekshiruvi shunga bog'liq.
+                    if tf.code != "M1" and age_min < tf.minutes:
+                        counts[tf.code] = 0
+                        continue
+                    count = min(int(age_min / tf.minutes) + 3, 5000)
             try:
                 df = provider.candles(settings.symbol, tf.code, count)
                 counts[tf.code] = upsert_candles(session, settings.symbol, tf.code, df)
