@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart Trader · {{ symbol }}</title>
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+  :root { --bg:#0f1115; --panel:#171a21; --line:#262b36; --text:#e6e8ee; --muted:#8a91a3;
+          --gold:#d4a72c; --up:#26a269; --down:#e5484d; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 20px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  header h1 { margin:0; font-size:18px; } header h1 span { color:var(--gold); }
+  main { padding:16px 20px; display:grid; gap:16px; grid-template-columns: 2fr 1fr; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; padding:16px; } }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px; min-width:0; }
+  .panel h2 { margin:0 0 10px; font-size:14px; color:var(--muted); font-weight:600; }
+  .kpis { display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; grid-column:1 / -1; }
+  @media (max-width: 700px) { .kpis { grid-template-columns:repeat(2, 1fr); } }
+  .kpi .v { font-size:22px; font-weight:650; } .kpi .l { color:var(--muted); font-size:12px; }
+  #chart { height:420px; }
+  .tfs { display:flex; gap:4px; flex-wrap:wrap; margin-bottom:10px; }
+  button { background:#222733; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:6px 10px; cursor:pointer; font:inherit; }
+  button.active, button.primary { background:var(--gold); color:#111; border-color:var(--gold); font-weight:600; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:6px 4px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  th { color:var(--muted); font-weight:500; }
+  .scroll { overflow-x:auto; }
+  .BUY, .TP, .pos { color:var(--up); } .SELL, .SL, .neg { color:var(--down); } .HOLD { color:var(--muted); }
+  .sig { border-bottom:1px solid var(--line); padding:10px 0; } .sig:last-child { border:0; }
+  .sig .top { display:flex; justify-content:space-between; gap:8px; font-weight:600; }
+  .sig .reason { color:var(--muted); font-size:13px; margin-top:4px; white-space:pre-wrap; }
+  .badge { font-size:11px; padding:1px 6px; border-radius:10px; background:#2a3040; color:var(--muted); font-weight:500; }
+  .badge.ok { background:rgba(212,167,44,.18); color:var(--gold); }
+  .full { grid-column:1 / -1; }
+  #status { color:var(--muted); font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Smart Trader · <span>{{ symbol }}</span></h1>
+  <div style="display:flex;gap:10px;align-items:center">
+    <span id="status"></span>
+    <button class="primary" id="analyze">Hozir tahlil qilish</button>
+  </div>
+</header>
+<main>
+  <section class="kpis">
+    <div class="panel kpi"><div class="l">Demo balans</div><div class="v" id="k-balance">–</div></div>
+    <div class="panel kpi"><div class="l">Aniqlik (yopilgan savdolar)</div><div class="v" id="k-win">–</div></div>
+    <div class="panel kpi"><div class="l">Yopilgan savdolar</div><div class="v" id="k-trades">–</div></div>
+    <div class="panel kpi"><div class="l">Bugungi Claude xarajati</div><div class="v" id="k-cost">–</div></div>
+  </section>
+
+  <section class="panel">
+    <div class="tfs" id="tfs">
+      {% for tf in timeframes %}<button data-tf="{{ tf }}" {% if tf == 'H1' %}class="active"{% endif %}>{{ tf }}</button>{% endfor %}
+    </div>
+    <div id="chart"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Ishonchli signallar</h2>
+    <div id="signals"><div class="HOLD">Hali signal yo'q</div></div>
+  </section>
+
+  <section class="panel full">
+    <h2>Strategiyalar reytingi</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>Strategiya</th><th>Savdolar</th><th>Aniqlik</th><th>Foyda / zarar, USD</th></tr></thead>
+      <tbody id="strategies"></tbody>
+    </table></div>
+  </section>
+
+  <section class="panel full">
+    <h2>Demo savdolar</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>Ochilgan</th><th>Strategiya</th><th>Yo'nalish</th><th>Lot</th><th>Kirish</th><th>Stop</th><th>Maqsad</th><th>Chiqish</th><th>Natija</th><th>Holat</th></tr></thead>
+      <tbody id="trades"></tbody>
+    </table></div>
+  </section>
+</main>
+<script>
+const titles = {{ titles | tojson }};
+const fmt = (v, d = 2) => v == null ? "–" : Number(v).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+const when = iso => iso ? new Date(iso).toLocaleString() : "–";
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const get = url => fetch(url).then(r => r.json());
+
+const chart = LightweightCharts.createChart(document.getElementById("chart"), {
+  layout: { background: { color: "#171a21" }, textColor: "#8a91a3" },
+  grid: { vertLines: { color: "#20242e" }, horzLines: { color: "#20242e" } },
+  timeScale: { timeVisible: true, borderColor: "#262b36" }, rightPriceScale: { borderColor: "#262b36" },
+});
+const series = chart.addCandlestickSeries({ upColor: "#26a269", downColor: "#e5484d", borderVisible: false, wickUpColor: "#26a269", wickDownColor: "#e5484d" });
+new ResizeObserver(() => chart.applyOptions({ width: document.getElementById("chart").clientWidth })).observe(document.getElementById("chart"));
+let tf = "H1", lines = [];
+
+async function loadChart() {
+  series.setData(await get(`/api/candles?tf=${tf}&limit=500`));
+  lines.forEach(l => series.removePriceLine(l)); lines = [];
+  const open = (await get("/api/trades?limit=20")).filter(t => t.status === "OPEN");
+  for (const t of open) {
+    lines.push(series.createPriceLine({ price: t.entry, color: "#d4a72c", lineWidth: 1, title: `${t.side} ${titles[t.strategy] || t.strategy}` }));
+    lines.push(series.createPriceLine({ price: t.sl, color: "#e5484d", lineWidth: 1, lineStyle: 2, title: "SL" }));
+    lines.push(series.createPriceLine({ price: t.tp, color: "#26a269", lineWidth: 1, lineStyle: 2, title: "TP" }));
+  }
+}
+
+async function loadPanels() {
+  const [st, sigs, trades] = await Promise.all([get("/api/stats"), get("/api/signals?limit=30"), get("/api/trades")]);
+  const k = (id, v, cls) => { const e = document.getElementById(id); e.textContent = v; e.className = "v " + (cls || ""); };
+  k("k-balance", "$" + fmt(st.balance), st.balance >= st.start_balance ? "pos" : "neg");
+  k("k-win", st.win_rate == null ? "–" : st.win_rate + "%");
+  k("k-trades", st.closed_trades);
+  k("k-cost", "$" + fmt(st.claude_cost_today) + " / $" + fmt(st.daily_cost_limit, 0));
+  document.getElementById("status").textContent = `Manba: ${st.provider.toUpperCase()} · yangilandi ${new Date().toLocaleTimeString()}`;
+
+  const shown = sigs.filter(s => s.published).concat(sigs.filter(s => !s.published)).slice(0, 12);
+  document.getElementById("signals").innerHTML = shown.length ? shown.map(s => `
+    <div class="sig">
+      <div class="top"><span class="${s.side}">${s.side} · ${esc(titles[s.strategy] || s.strategy)}</span>
+        <span class="badge ${s.published ? "ok" : ""}">${s.published ? "e'lon qilindi" : "o'tmadi"} · ${Math.round(s.confidence * 100)}%</span></div>
+      ${s.side !== "HOLD" ? `<div>Kirish ${fmt(s.entry)} · SL <span class="SELL">${fmt(s.stop_loss)}</span> · TP <span class="BUY">${fmt(s.take_profit)}</span></div>` : ""}
+      <div class="reason">${esc(s.reason)}</div>
+      <div class="reason">${when(s.ts)}</div>
+    </div>`).join("") : '<div class="HOLD">Hali signal yo\'q</div>';
+
+  document.getElementById("strategies").innerHTML = st.strategies.length ? st.strategies.map(r => `
+    <tr><td>${esc(titles[r.strategy] || r.strategy)}</td><td>${r.trades}</td><td>${r.win_rate}%</td>
+    <td class="${r.pnl >= 0 ? "pos" : "neg"}">${fmt(r.pnl)}</td></tr>`).join("")
+    : '<tr><td colspan="4" class="HOLD">Hali yopilgan savdo yo\'q</td></tr>';
+
+  document.getElementById("trades").innerHTML = trades.length ? trades.map(t => `
+    <tr><td>${when(t.opened_at)}</td><td>${esc(titles[t.strategy] || t.strategy)}</td><td class="${t.side}">${t.side}</td>
+    <td>${fmt(t.qty)}</td><td>${fmt(t.entry)}</td><td>${fmt(t.sl)}</td><td>${fmt(t.tp)}</td><td>${fmt(t.exit)}</td>
+    <td class="${(t.pnl || 0) >= 0 ? "pos" : "neg"}">${fmt(t.pnl)}</td><td class="${t.status}">${t.status}</td></tr>`).join("")
+    : '<tr><td colspan="10" class="HOLD">Hali savdo yo\'q</td></tr>';
+}
+
+document.getElementById("tfs").addEventListener("click", e => {
+  if (!e.target.dataset.tf) return;
+  tf = e.target.dataset.tf;
+  document.querySelectorAll("#tfs button").forEach(b => b.classList.toggle("active", b === e.target));
+  loadChart();
+});
+document.getElementById("analyze").addEventListener("click", async e => {
+  const r = await fetch("/api/analyze", { method: "POST" }).then(r => r.json());
+  e.target.textContent = r.started ? "Tahlil ketmoqda…" : r.message;
+  setTimeout(() => { e.target.textContent = "Hozir tahlil qilish"; refresh(); }, 60000);
+});
+const refresh = () => { loadChart(); loadPanels(); };
+refresh(); setInterval(refresh, 30000);
+</script>
+</body>
+</html>
