@@ -63,7 +63,11 @@ def scheduler_enabled() -> bool:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    init_db()
+    try:
+        init_db()
+    except Exception:
+        # Baza vaqtincha mavjud bo'lmasa ham sayt ochilsin; xato logda ko'rinadi
+        log.exception("Bazani tayyorlab bo'lmadi")
     scheduler = None
     if scheduler_enabled():
         scheduler = BackgroundScheduler(timezone="UTC")
