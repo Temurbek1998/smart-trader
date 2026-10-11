@@ -50,10 +50,13 @@ Ikkalasi uchun:
 2. **Vercel:** GitHub repo'ni import qiling. Environment Variables: `WEB_USER`, `WEB_PASSWORD`.
 3. **Tarixni bir marta yuklash:** o'z kompyuteringizda `.env` ga Neon `DATABASE_URL` ni yozib, `python -m app.data.collector` ni ishga tushiring (yoki `import_csv` bilan Dukascopy tarixini).
 
-**A usul** uchun Vercel'ga qo'shimcha: `DATA_PROVIDER=twelvedata`, `TWELVEDATA_API_KEY`, `ANTHROPIC_API_KEY`, `CRON_SECRET`. Cron jadvali `vercel.json` da tayyor. Har 5 daqiqalik Cron uchun Vercel'ning pullik (Pro) tarifi kerak bo'lishi mumkin: bepul tarifda Cron chastotasi cheklangan. Twelve Data bepul tarifi (kuniga 800 so'rov) yetadi: tizim faqat yangi sham yopilganda so'rov yuboradi, kuniga taxminan 700 ta.
+**A usul** uchun Vercel'ga qo'shimcha: `DATA_PROVIDER=twelvedata`, `TWELVEDATA_API_KEY`, `ANTHROPIC_API_KEY`, `CRON_SECRET`.
 
-**B usul** uchun Windows'da `.env` ga Neon `DATABASE_URL`, `ANTHROPIC_API_KEY` va MT5 ma'lumotlarini yozib, `python -m app.worker` ni doimiy ishga tushiring. Vercel'da `crons` bo'limini `vercel.json` dan olib tashlang.
+Har 5 daqiqada chaqirish:
+- **Bepul:** [cron-job.org](https://cron-job.org) da yangi vazifa: URL `https://<sayt>.vercel.app/api/cron`, har 5 daqiqa, Headers bo'limiga `Authorization: Bearer <CRON_SECRET>`.
+- **Pullik (Vercel Pro):** `vercel.json` ga `"crons": [{ "path": "/api/cron", "schedule": "*/5 * * * *" }]` qo'shing; Vercel sarlavhani o'zi yuboradi. Bepul tarifda Vercel Cron chastotasi cheklangan. Twelve Data bepul tarifi (kuniga 800 so'rov) yetadi: tizim faqat yangi sham yopilganda so'rov yuboradi, kuniga taxminan 700 ta.
 
+**B usul** uchun Windows'da `.env` ga Neon `DATABASE_URL`, `ANTHROPIC_API_KEY` va MT5 ma'lumotlarini yozib, `python -m app.worker` ni doimiy ishga tushiring. 
 Paneldagi "Hozir tahlil qilish" tugmasi bazaga so'rov yozadi; A usulda keyingi Cron, B usulda worker 30 soniya ichida uni bajaradi.
 
 ## 10+ yillik tarix
