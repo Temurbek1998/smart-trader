@@ -156,10 +156,14 @@ def stats():
 @app.get("/api/cron")
 def cron(request: Request):
     """Vercel Cron har 5 daqiqada chaqiradi. Vercel `Authorization: Bearer <CRON_SECRET>` yuboradi."""
-    secret = os.getenv("CRON_SECRET", "")
-    given = request.headers.get("authorization", "")
-    if not secret or not secrets.compare_digest(given, f"Bearer {secret}"):
-        raise HTTPException(401)
+    secret = os.getenv("CRON_SECRET", "").strip()
+    # Sarlavha (`Authorization: Bearer <kod>`) yoki URL'dagi `?key=<kod>` qabul qilinadi
+    given = request.headers.get("authorization", "").strip()
+    if given.lower().startswith("bearer "):
+        given = given[7:].strip()
+    given = given or request.query_params.get("key", "").strip()
+    if not secret or not secrets.compare_digest(given, secret):
+        raise HTTPException(401, "CRON_SECRET mos kelmadi" if secret else "Vercel'da CRON_SECRET yo'q")
     with SessionLocal() as s:
         pending = s.scalars(select(AnalysisRequest).where(AnalysisRequest.done_at.is_(None))).all()
         for r in pending:

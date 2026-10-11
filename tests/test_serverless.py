@@ -64,4 +64,6 @@ def test_cron_requires_secret(monkeypatch):
         assert c.get("/api/cron").status_code == 401
         assert c.get("/api/cron", headers={"Authorization": "Bearer wrong"}).status_code == 401
         assert c.get("/api/cron", headers={"Authorization": "Bearer s3cret"}).json() == {"ok": True}
+        assert c.get("/api/cron?key=s3cret").json() == {"ok": True}
+        assert c.get("/api/cron?key=wrong").status_code == 401
     assert ran == [False]
