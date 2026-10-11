@@ -20,7 +20,7 @@ from app.analysis.claude_analyst import spent_today
 from app.analysis.strategies import STRATEGIES
 from app.config import settings
 from app.data.store import load_candles
-from app.db import AnalysisRequest, PaperTrade, SessionLocal, Signal, init_db, utcnow
+from app.db import AnalysisRequest, PaperTrade, SessionLocal, Signal, engine, init_db, utcnow
 from app.engine import run_cycle
 from app.timeframes import BY_CODE
 from app.trading import paper
@@ -142,6 +142,7 @@ def stats():
         return {
             "symbol": settings.symbol,
             "provider": settings.data_provider,
+            "database": engine.dialect.name,
             "balance": round(paper.balance(s), 2),
             "start_balance": settings.paper_balance,
             "closed_trades": closed,
