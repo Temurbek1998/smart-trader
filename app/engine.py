@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 
 from app.analysis import claude_analyst as analyst
+from app.analysis.market import active_session, market_open
 from app.analysis.signals import check
 from app.analysis.snapshot import build_snapshot, monitor_view
 from app.analysis.strategies import STRATEGIES
@@ -22,14 +23,27 @@ from app.trading import paper
 
 log = logging.getLogger(__name__)
 
-# Monitoring nima desa ham, shuncha vaqtda bir marta chuqur tahlil qilinadi
-MAX_DEEP_GAP = timedelta(hours=4)
+# Monitoring nima desa ham, shuncha vaqtda bir marta chuqur tahlil qilinadi:
+# London/Nyu-York paytida tez-tez, Osiyo sessiyasida kamroq
+DEEP_GAP_ACTIVE = timedelta(hours=2)
+DEEP_GAP_QUIET = timedelta(hours=4)
+# Signal e'lon qilinishi uchun kamida shuncha strategiya bir yo'nalishda bo'lishi kerak
+MIN_AGREEING = 2
 
 
 def _last_deep(session) -> Analysis | None:
     return session.scalar(
         select(Analysis).where(Analysis.kind == "deep").order_by(Analysis.ts.desc()).limit(1)
     )
+
+
+def _conditions_text(result: dict, problems: list[str]) -> str:
+    parts = []
+    if result.get("conditions_met"):
+        parts.append("Shartlar: " + "; ".join(result["conditions_met"]))
+    if problems and problems != ["HOLD"]:
+        parts.append("O'tmadi: " + "; ".join(problems))
+    return ("\n\n" + "\n".join(parts)) if parts else ""
 
 
 def run_cycle(force_deep: bool = False) -> dict:
@@ -46,6 +60,10 @@ def run_cycle(force_deep: bool = False) -> dict:
             closed = paper.update_trades(session, symbol, recent["high"].max(), recent["low"].min())
             report["closed_trades"] = [t.id for t in closed]
 
+        now = datetime.now(timezone.utc)
+        if not force_deep and not market_open(now):
+            report["skipped"] = "bozor yopiq (dam olish kunlari)"
+            return report
         if not settings.anthropic_api_key:
             report["skipped"] = "ANTHROPIC_API_KEY yo'q"
             return report
@@ -61,7 +79,8 @@ def run_cycle(force_deep: bool = False) -> dict:
 
         snapshot = build_snapshot(session, symbol)
         last = _last_deep(session)
-        due = last is None or datetime.now(timezone.utc) - last.ts.replace(tzinfo=timezone.utc) > MAX_DEEP_GAP
+        gap = DEEP_GAP_ACTIVE if active_session(now) else DEEP_GAP_QUIET
+        due = last is None or now - last.ts.replace(tzinfo=timezone.utc) > gap
         if not (force_deep or due):
             decision, _ = analyst.monitor(session, monitor_view(snapshot), last.output if last else None)
             report["monitor"] = decision
@@ -83,16 +102,38 @@ def run_cycle(force_deep: bool = False) -> dict:
         with ThreadPoolExecutor(max_workers=len(STRATEGIES)) as pool:
             outcomes = list(pool.map(run, STRATEGIES))
 
-        for strategy, result, analysis_id, exc in outcomes:
+        ok = [(st, res, aid) for st, res, aid, exc in outcomes if exc is None]
+        for strategy, _, _, exc in outcomes:
             if exc is not None:
                 report["signals"].append({"strategy": strategy.key, "error": f"{type(exc).__name__}: {exc}"[:1500]})
-                continue
+
+        # Yangilik filtri: macro strategiyasi xavfli yangilik desa yoki tekshira olmasa, hech qanday signal chiqmaydi
+        macro = next((res for st, res, _ in ok if st.key == "macro"), None)
+        if macro is None:
+            news_block = "yangiliklar tekshirilmadi (macro tahlili yo'q)"
+        elif macro.get("high_impact_news_within_60min"):
+            news_block = "60 daqiqa ichida muhim yangilik"
+        else:
+            news_block = None
+        votes = {"BUY": 0, "SELL": 0}
+        for _, res, _ in ok:
+            if res["side"] in votes:
+                votes[res["side"]] += 1
+
+        for strategy, result, analysis_id in ok:
             published, agree, problems = check(result)
+            if result["side"] in votes:
+                if votes[result["side"]] < MIN_AGREEING:
+                    problems.append(f"faqat {votes[result['side']]} ta strategiya {result['side']} dedi, kamida {MIN_AGREEING} kerak")
+                if news_block:
+                    problems.append(news_block)
+                published = not problems
             sig = Signal(
                 analysis_id=analysis_id, strategy=strategy.key, symbol=symbol, side=result["side"],
                 entry=result["entry"] or None, stop_loss=result["stop_loss"] or None,
                 take_profit=result["take_profit"] or None, confidence=result["confidence"],
-                timeframes_agree=agree, published=published, reason=result["reason"],
+                timeframes_agree=agree, published=published,
+                reason=result["reason"] + _conditions_text(result, problems),
             )
             session.add(sig)
             session.commit()

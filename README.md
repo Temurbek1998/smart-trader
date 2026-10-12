@@ -4,7 +4,9 @@ Oltin (XAUUSD) bozorini Claude API orqali chuqur tahlil qilib, ishonchli signal 
 
 - **Ma'lumot:** MetaTrader 5 (asosiy) yoki Yahoo (faqat sinov uchun). 9 ta vaqt oralig'i: M1, M5, M15, H1, H4, D1, W1, MN1, Y1.
 - **Tahlil:** `claude-haiku-5-5` har 5 daqiqada arzon kuzatadi; kerak bo'lsa `claude-opus-5-5` 4 ta strategiya bo'yicha chuqur tahlil qiladi. Opus bazadagi butun arxivdan `query_history` asbobi bilan qo'shimcha davr so'raydi, "macro" strategiyasi esa web qidiruv bilan DXY, obligatsiyalar, Fed va iqtisodiy kalendarni tekshiradi.
-- **Ishonch qoidasi:** signal faqat D1/H4 va H1/M15 bir yo'nalishda, ishonch ≥ 0,7 va risk/foyda ≥ 1:1,5 bo'lsa e'lon qilinadi.
+- **Strategiyalar:** har biri raqamlangan majburiy shartlar ro'yxati (trend pullback, sessiya breakout, range mean-reversion, fundamental filtr). Bitta shart bajarilmasa HOLD. EMA, RSI, ADX, ATR, oldingi kun/hafta va Osiyo sessiyasi darajalarini Python hisoblaydi.
+- **Ishonch qoidasi:** signal faqat D1/H4 va H1/M15 bir yo'nalishda, ishonch ≥ 0,7, risk/foyda ≥ 1:2, kamida 2 ta strategiya bir yo'nalishda va keyingi 60 daqiqada muhim yangilik bo'lmasa e'lon qilinadi.
+- **Jadval:** dam olish kunlari tahlil yo'q; London/Nyu-York paytida har 2 soatda, Osiyo paytida har 4 soatda chuqur tahlil (monitoring muhim o'zgarish sezsa, darhol).
 - **Demo savdo:** har signal balansning 1% xavfi bilan demo savdo ochadi; stop-loss yoki take-profit tegsa yopiladi. `EXECUTE_ON_MT5=true` bo'lsa, MT5 demo hisobida ham ochiladi.
 - **Web panel:** grafik, signallar, demo savdolar, strategiyalar reytingi, kunlik Claude xarajati.
 

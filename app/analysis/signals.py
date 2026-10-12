@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from app.config import settings
 
-MIN_RISK_REWARD = 1.5
+MIN_RISK_REWARD = 2.0
 
 
 def check(result: dict, min_confidence: float | None = None) -> tuple[bool, bool, list[str]]:

@@ -5,6 +5,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.analysis.market import context
 from app.data.store import load_candles
 from app.db import PaperTrade
 from app.indicators import summarize
@@ -42,6 +43,7 @@ def build_snapshot(session: Session, symbol: str) -> dict:
     return {
         "symbol": symbol,
         "price": price,
+        "market": context(session, symbol),
         "timeframes": frames,
         "open_paper_trades": [
             {"side": t.side, "entry": t.entry_price, "sl": t.stop_loss, "tp": t.take_profit, "strategy": t.strategy}
@@ -55,5 +57,6 @@ def monitor_view(snapshot: dict) -> dict:
     return {
         "symbol": snapshot["symbol"],
         "price": snapshot["price"],
+        "market": snapshot.get("market"),
         "summaries": {k: v["summary"] for k, v in snapshot["timeframes"].items() if k in ("M5", "M15", "H1", "H4", "D1")},
     }

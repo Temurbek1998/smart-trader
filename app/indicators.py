@@ -32,6 +32,20 @@ def atr(df: pd.DataFrame, n: int = 14) -> pd.Series:
     return tr.ewm(alpha=1 / n, adjust=False).mean()
 
 
+def adx(df: pd.DataFrame, n: int = 14) -> pd.Series:
+    """Trend kuchi: 25 dan yuqori kuchli trend, 20 dan past yon harakat (range)."""
+    up = df["high"].diff()
+    down = -df["low"].diff()
+    plus_dm = up.where((up > down) & (up > 0), 0.0)
+    minus_dm = down.where((down > up) & (down > 0), 0.0)
+    tr = atr(df, 1)
+    atr_n = tr.ewm(alpha=1 / n, adjust=False).mean().replace(0, np.nan)
+    plus_di = 100 * plus_dm.ewm(alpha=1 / n, adjust=False).mean() / atr_n
+    minus_di = 100 * minus_dm.ewm(alpha=1 / n, adjust=False).mean() / atr_n
+    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, np.nan)
+    return dx.ewm(alpha=1 / n, adjust=False).mean()
+
+
 def add_all(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     c = out["close"]
@@ -40,6 +54,7 @@ def add_all(df: pd.DataFrame) -> pd.DataFrame:
     out["rsi_14"] = rsi(c)
     out = out.join(macd(c))
     out["atr_14"] = atr(out)
+    out["adx_14"] = adx(out)
     mid = c.rolling(20).mean()
     std = c.rolling(20).std()
     out["bb_upper"] = mid + 2 * std
@@ -74,6 +89,7 @@ def summarize(df: pd.DataFrame) -> dict:
         "rsi_14": r(last["rsi_14"]),
         "macd_hist": r(last["macd_hist"]),
         "atr_14": r(last["atr_14"]),
+        "adx_14": r(last["adx_14"]),
         "bb_upper": r(last["bb_upper"]),
         "bb_lower": r(last["bb_lower"]),
         "range_high": r(ind["high"].max()),

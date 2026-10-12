@@ -47,7 +47,10 @@ oxirida M15/M5/M1 da kirish nuqtasini.
 - higher_tf_bias = D1 va H4 umumiy yo'nalishi; lower_tf_bias = H1 va M15 yo'nalishi.
 - Ishonching past bo'lsa yoki vaqt oraliqlari bir-biriga zid bo'lsa, HOLD ber. Noto'g'ri signaldan HOLD yaxshiroq.
 - BUY uchun stop_loss < entry < take_profit, SELL uchun take_profit < entry < stop_loss. Risk/foyda nisbati \
-kamida 1:1.5 bo'lsin. HOLD bo'lsa entry, stop_loss, take_profit = 0.
+kamida 1:2 bo'lsin. HOLD bo'lsa entry, stop_loss, take_profit = 0.
+- Strategiyaning har bir majburiy sharti bajarilganini snapshot'dagi aniq raqam bilan isbotla. Taxmin bilan shart \
+bajarildi dema. market bo'limida vaqt, sessiya va asosiy darajalar tayyor hisoblangan.
+- high_impact_news_within_60min: web qidiruvsiz strategiyalarda false qo'y (buni macro strategiyasi tekshiradi).
 - confidence 0 dan 1 gacha: tarixda shunday holatlarda bu signal necha foiz to'g'ri chiqqanini halol baholang.
 - reason maydonini o'zbek tilida, 3-6 gapda yoz: asosiy dalillar va signalni bekor qiladigan narx darajasi.
 """
@@ -64,11 +67,14 @@ SIGNAL_SCHEMA = {
         "lower_tf_bias": {"type": "string", "enum": ["UP", "DOWN", "FLAT"]},
         "trade_timeframe": {"type": "string", "enum": ["M15", "H1", "H4", "D1"]},
         "key_levels": {"type": "array", "items": {"type": "number"}},
+        "conditions_met": {"type": "array", "items": {"type": "string"}},
+        "high_impact_news_within_60min": {"type": "boolean"},
         "reason": {"type": "string"},
     },
     "required": [
         "side", "entry", "stop_loss", "take_profit", "confidence",
-        "higher_tf_bias", "lower_tf_bias", "trade_timeframe", "key_levels", "reason",
+        "higher_tf_bias", "lower_tf_bias", "trade_timeframe", "key_levels",
+        "conditions_met", "high_impact_news_within_60min", "reason",
     ],
     "additionalProperties": False,
 }
