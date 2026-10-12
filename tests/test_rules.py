@@ -13,8 +13,10 @@ BUY = {"side": "BUY", "entry": 2400, "stop_loss": 2390, "take_profit": 2430, "co
 HOLD = {**BUY, "side": "HOLD", "entry": 0, "stop_loss": 0, "take_profit": 0}
 
 
-def _run(monkeypatch, answers: dict) -> dict:
+def _run(monkeypatch, answers: dict, precheck=lambda key, snap: None, calls=None) -> dict:
     def fake_analyze(session, snapshot, strategy):
+        if calls is not None:
+            calls.append(strategy.key)
         from app.db import Analysis
         row = Analysis(symbol="XAUUSD", kind="deep", strategy=strategy.key, model="m",
                        input_snapshot={}, output={}, cost_usd=0)
@@ -25,6 +27,7 @@ def _run(monkeypatch, answers: dict) -> dict:
     monkeypatch.setattr(engine, "collect", lambda errors=None: {})
     monkeypatch.setattr(engine.analyst, "analyze", fake_analyze)
     monkeypatch.setattr(engine, "market_open", lambda now: True)
+    monkeypatch.setattr(engine, "precheck", precheck)
     with SessionLocal() as s:
         upsert_candles(s, "XAUUSD", "H1", make_candles())
     report = engine.run_cycle(force_deep=True)
@@ -63,3 +66,29 @@ def test_market_hours():
     assert session_name(datetime(2026, 10, 12, 13, tzinfo=timezone.utc)) == "LONDON_NEWYORK_OVERLAP"
     assert not market_open(datetime(2026, 10, 11, 21, tzinfo=timezone.utc))
     assert market_open(datetime(2026, 10, 11, 22, 30, tzinfo=timezone.utc))
+
+
+def test_precheck_skips_claude_and_macro(monkeypatch):
+    calls = []
+    out = _run(monkeypatch, {"trend": BUY, "breakout": HOLD, "mean_reversion": HOLD, "macro": HOLD},
+               precheck=lambda key, snap: None if key == "breakout" else "shart yo'q", calls=calls)
+    assert calls == ["breakout"]  # macro chaqirilmadi: texnik signal yo'q
+    assert out["trend"]["problems"] == ["shart yo'q"]
+
+
+def test_macro_runs_only_after_technical_signal(monkeypatch):
+    calls = []
+    _run(monkeypatch, {"trend": BUY, "breakout": HOLD, "mean_reversion": HOLD, "macro": HOLD}, calls=calls)
+    assert calls[-1] == "macro" and len(calls) == 4
+
+
+def test_precheck_rules():
+    from app.analysis.strategies import precheck
+    snap = {"price": 2400, "market": {"session": "ASIA", "levels": {"prev_day_high": 2401}},
+            "timeframes": {"D1": {"summary": {"trend": "UP"}}, "H4": {"summary": {"trend": "UP", "adx_14": 30}},
+                           "H1": {"summary": {"rsi_14": 50, "atr_14": 5}}}}
+    assert precheck("trend", snap) is None
+    assert "ADX" in precheck("mean_reversion", snap)
+    assert "Osiyo" in precheck("breakout", snap)
+    snap["market"]["session"] = "LONDON"
+    assert precheck("breakout", snap) is None

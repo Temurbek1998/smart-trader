@@ -87,3 +87,34 @@ for _s in STRATEGIES:
     object.__setattr__(_s, "rules", _s.rules + "\n" + COMMON)
 
 BY_KEY = {s.key: s for s in STRATEGIES}
+
+
+def precheck(key: str, snapshot: dict) -> str | None:
+    """Claude'ni chaqirishdan oldin Python bilan bepul tekshiruv.
+    Strategiyaning asosiy raqamli sharti bajarilmasa, sababini qaytaradi (Claude chaqirilmaydi, natija HOLD)."""
+    tfs = snapshot.get("timeframes", {})
+    get = lambda tf, k: (tfs.get(tf) or {}).get("summary", {}).get(k)  # noqa: E731
+    price = snapshot.get("price")
+    market = snapshot.get("market") or {}
+    if key == "trend":
+        d1, h4, adx = get("D1", "trend"), get("H4", "trend"), get("H4", "adx_14")
+        if d1 not in ("UP", "DOWN") or d1 != h4:
+            return f"T1: D1 {d1}, H4 {h4} bir xil trend emas"
+        if adx is None or adx < 25:
+            return f"T2: H4 ADX {adx} < 25"
+    elif key == "mean_reversion":
+        adx, rsi = get("H4", "adx_14"), get("H1", "rsi_14")
+        if adx is None or adx >= 20:
+            return f"R1: H4 ADX {adx} >= 20 (range emas)"
+        if rsi is None or 32 < rsi < 68:
+            return f"R3: H1 RSI {rsi} chegarada emas"
+    elif key == "breakout":
+        if market.get("session") == "ASIA":
+            return "B1: Osiyo sessiyasi"
+        atr = get("H1", "atr_14")
+        levels = [v for v in (market.get("levels") or {}).values() if v]
+        if price is None or not atr or not levels:
+            return "B2: daraja yoki ATR yo'q"
+        if min(abs(price - lv) for lv in levels) > 1.0 * atr:
+            return "B2: narx hech qaysi muhim darajaga 1 ATR yaqin emas"
+    return None

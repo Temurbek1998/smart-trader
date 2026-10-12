@@ -13,7 +13,7 @@ from app.analysis import claude_analyst as analyst
 from app.analysis.market import active_session, market_open
 from app.analysis.signals import check
 from app.analysis.snapshot import build_snapshot, monitor_view
-from app.analysis.strategies import STRATEGIES
+from app.analysis.strategies import BY_KEY, STRATEGIES, precheck
 from app.config import settings
 from app.data.collector import collect
 from app.data.providers import get_provider
@@ -27,6 +27,8 @@ log = logging.getLogger(__name__)
 # London/Nyu-York paytida tez-tez, Osiyo sessiyasida kamroq
 DEEP_GAP_ACTIVE = timedelta(hours=2)
 DEEP_GAP_QUIET = timedelta(hours=4)
+# Monitoring "kerak" desa ham, ikki chuqur tahlil orasida kamida shuncha vaqt
+MIN_DEEP_GAP = timedelta(minutes=45)
 # Signal e'lon qilinishi uchun kamida shuncha strategiya bir yo'nalishda bo'lishi kerak
 MIN_AGREEING = 2
 
@@ -79,15 +81,29 @@ def run_cycle(force_deep: bool = False) -> dict:
 
         snapshot = build_snapshot(session, symbol)
         last = _last_deep(session)
+        since = now - last.ts.replace(tzinfo=timezone.utc) if last else None
         gap = DEEP_GAP_ACTIVE if active_session(now) else DEEP_GAP_QUIET
-        due = last is None or now - last.ts.replace(tzinfo=timezone.utc) > gap
-        if not (force_deep or due):
-            decision, _ = analyst.monitor(session, monitor_view(snapshot), last.output if last else None)
-            report["monitor"] = decision
-            if not decision["analyze"]:
+        if not force_deep:
+            if since is not None and since < MIN_DEEP_GAP:
+                report["skipped"] = f"oxirgi chuqur tahlildan {int(since.total_seconds() // 60)} daqiqa o'tdi"
                 return report
+            if since is not None and since <= gap:
+                decision, _ = analyst.monitor(session, monitor_view(snapshot), last.output)
+                report["monitor"] = decision
+                if not decision["analyze"]:
+                    return report
 
         report["signals"] = []
+
+        # 1-bosqich: texnik strategiyalar. Asosiy raqamli shart bajarilmasa, Claude chaqirilmaydi (bepul HOLD).
+        technical = [st for st in STRATEGIES if not st.web_search]
+        candidates = []
+        for st in technical:
+            why = precheck(st.key, snapshot)
+            if why:
+                report["signals"].append({"strategy": st.key, "side": "HOLD", "published": False, "problems": [why]})
+            else:
+                candidates.append(st)
 
         def run(strategy):
             # Har strategiya o'z sessiyasida, parallel: Vercel vaqt chegarasiga sig'ish uchun
@@ -99,8 +115,18 @@ def run_cycle(force_deep: bool = False) -> dict:
                     log.exception("%s tahlili xato", strategy.key)
                     return strategy, None, None, exc
 
-        with ThreadPoolExecutor(max_workers=len(STRATEGIES)) as pool:
-            outcomes = list(pool.map(run, STRATEGIES))
+        outcomes = []
+        if candidates:
+            with ThreadPoolExecutor(max_workers=len(candidates)) as pool:
+                outcomes = list(pool.map(run, candidates))
+        # 2-bosqich: fundamental/yangilik (web qidiruv, eng qimmat) faqat texnik signal bo'lsa
+        if any(exc is None and res["side"] != "HOLD" for _, res, _, exc in outcomes):
+            outcomes.append(run(BY_KEY["macro"]))
+        elif candidates:
+            report["signals"].append({"strategy": "macro", "side": "HOLD", "published": False,
+                                      "problems": ["texnik signal yo'q, yangilik tekshiruvi kerak emas"]})
+        else:
+            report["note"] = "hech bir strategiya sharti bajarilmadi, Claude chaqirilmadi"
 
         ok = [(st, res, aid) for st, res, aid, exc in outcomes if exc is None]
         for strategy, _, _, exc in outcomes:

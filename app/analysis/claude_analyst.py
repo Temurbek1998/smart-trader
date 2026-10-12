@@ -110,7 +110,7 @@ QUERY_HISTORY_TOOL = {
 
 WEB_SEARCH_TOOL = {"type": "web_search_20260209", "name": "web_search", "max_uses": 4}
 
-MAX_TOOL_ROUNDS = 6
+MAX_TOOL_ROUNDS = 3
 
 _client: anthropic.Anthropic | None = None
 
@@ -138,6 +138,20 @@ def spent_today(session: Session) -> float:
     start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     total = session.scalar(select(func.sum(Analysis.cost_usd)).where(Analysis.ts >= start))
     return float(total or 0)
+
+
+def cost_breakdown(session: Session) -> list[dict]:
+    """Bugungi xarajat: tahlil turi va strategiya bo'yicha."""
+    start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    rows = session.execute(
+        select(Analysis.kind, Analysis.strategy, func.count(), func.sum(Analysis.cost_usd))
+        .where(Analysis.ts >= start)
+        .group_by(Analysis.kind, Analysis.strategy)
+    ).all()
+    return [
+        {"kind": k, "strategy": st, "calls": n, "cost_usd": round(float(c or 0), 3), "avg_usd": round(float(c or 0) / n, 3)}
+        for k, st, n, c in rows
+    ]
 
 
 def _final_json(response) -> dict:

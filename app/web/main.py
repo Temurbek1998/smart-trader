@@ -17,7 +17,7 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 
-from app.analysis.claude_analyst import spent_today
+from app.analysis.claude_analyst import cost_breakdown, spent_today
 from app.analysis.strategies import STRATEGIES
 from app.config import settings
 from app.data.store import load_candles
@@ -153,6 +153,8 @@ def stats():
             "win_rate": round(100 * wins / closed, 1) if closed else None,
             "claude_cost_today": round(spent_today(s), 4),
             "daily_cost_limit": settings.daily_cost_limit_usd,
+            "analyst_effort": settings.analyst_effort,
+            "cost_today_by_strategy": cost_breakdown(s),
             "strategies": per_strategy,
         }
 
