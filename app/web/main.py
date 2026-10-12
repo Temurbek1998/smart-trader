@@ -181,6 +181,20 @@ def cron(request: Request):
         )
 
 
+@app.get("/api/run")
+def run_now():
+    """Panel paroli bilan bitta siklni qo'lda ishga tushirib, natijasini ko'rsatadi (tekshirish uchun)."""
+    try:
+        return run_cycle(force_deep=False)
+    except Exception as exc:
+        log.exception("qo'lda sikl xato")
+        tb = traceback.extract_tb(exc.__traceback__)[-3:]
+        return JSONResponse(
+            {"error": f"{type(exc).__name__}: {exc}"[:2000], "where": [f"{f.filename.split('/app/')[-1]}:{f.lineno} {f.name}" for f in tb]},
+            status_code=500,
+        )
+
+
 @app.post("/api/analyze")
 def analyze_now():
     if not scheduler_enabled():
