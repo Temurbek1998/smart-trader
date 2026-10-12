@@ -144,6 +144,9 @@ def stats():
             "symbol": settings.symbol,
             "provider": settings.data_provider,
             "database": engine.dialect.name,
+            # Kalitning o'zi emas, faqat tekshirish uchun boshi va uzunligi
+            "anthropic_key": (settings.anthropic_api_key[:10] + f"... ({len(settings.anthropic_api_key)} belgi)")
+            if settings.anthropic_api_key else "yo'q",
             "balance": round(paper.balance(s), 2),
             "start_balance": settings.paper_balance,
             "closed_trades": closed,

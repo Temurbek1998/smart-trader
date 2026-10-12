@@ -24,7 +24,8 @@ def _f(name: str, default: str) -> float:
 
 @dataclass(frozen=True)
 class Settings:
-    anthropic_api_key: str = os.getenv("ANTHROPIC_API_KEY", "")
+    # Nusxalashda qo'shilib qoladigan bo'sh joy va qo'shtirnoqlarni olib tashlaymiz
+    anthropic_api_key: str = os.getenv("ANTHROPIC_API_KEY", "").strip().strip("\"'").strip()
     database_url: str = _db_url()
     data_provider: str = os.getenv("DATA_PROVIDER", "yahoo").lower()
     symbol: str = os.getenv("SYMBOL", "XAUUSD")
