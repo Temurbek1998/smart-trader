@@ -6,12 +6,13 @@ import logging
 import os
 import secrets
 import threading
+import traceback
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
@@ -169,7 +170,15 @@ def cron(request: Request):
         for r in pending:
             r.done_at = utcnow()
         s.commit()
-    return run_cycle(force_deep=bool(pending))
+    try:
+        return run_cycle(force_deep=bool(pending))
+    except Exception as exc:  # sababini cron javobida ko'rsatamiz, "Internal Server Error" o'rniga
+        log.exception("cron sikli xato")
+        tb = traceback.extract_tb(exc.__traceback__)[-3:]
+        return JSONResponse(
+            {"error": f"{type(exc).__name__}: {exc}"[:2000], "where": [f"{f.filename.split('/app/')[-1]}:{f.lineno} {f.name}" for f in tb]},
+            status_code=500,
+        )
 
 
 @app.post("/api/analyze")

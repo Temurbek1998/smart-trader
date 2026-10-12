@@ -23,6 +23,8 @@ def _insert(session: Session):
 def upsert_candles(session: Session, symbol: str, timeframe: str, df: pd.DataFrame) -> int:
     if df.empty:
         return 0
+    # Postgres bitta so'rovda bir xil vaqtli ikki qatorni yangilay olmaydi
+    df = df[~df.index.duplicated(keep="last")]
     rows = [
         {
             "symbol": symbol,

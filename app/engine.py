@@ -85,7 +85,7 @@ def run_cycle(force_deep: bool = False) -> dict:
 
         for strategy, result, analysis_id, exc in outcomes:
             if exc is not None:
-                report["signals"].append({"strategy": strategy.key, "error": str(exc)})
+                report["signals"].append({"strategy": strategy.key, "error": f"{type(exc).__name__}: {exc}"[:1500]})
                 continue
             published, agree, problems = check(result)
             sig = Signal(
